@@ -19,25 +19,6 @@ from pipecat.frames.frames import (
 )
 from pipecat.services.tts_service import TTSService
 
-ValidVoice = Literal[
-    "alloy", "ash", "ballad", "coral", "echo", "fable", "onyx", "nova", "sage", "shimmer", "verse"
-]
-
-VALID_VOICES: Dict[str, ValidVoice] = {
-    "alloy": "alloy",
-    "ash": "ash",
-    "ballad": "ballad",
-    "coral": "coral",
-    "echo": "echo",
-    "fable": "fable",
-    "onyx": "onyx",
-    "nova": "nova",
-    "sage": "sage",
-    "shimmer": "shimmer",
-    "verse": "verse",
-}
-
-
 class OpenAITTSService(TTSService):
     """OpenAI Text-to-Speech service that generates audio from text.
 
@@ -107,7 +88,7 @@ class OpenAITTSService(TTSService):
             async with self._client.audio.speech.with_streaming_response.create(
                 input=text,
                 model=self.model_name,
-                voice=VALID_VOICES[self._voice_id],
+                voice=self._voice_id.lower(),
                 response_format="pcm",
                 extra_body=extra_body,
             ) as r:
