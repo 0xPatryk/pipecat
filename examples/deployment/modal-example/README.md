@@ -2,13 +2,8 @@
 
 Barebones deployment example for [modal.com](https://www.modal.com)
 
-1. Install dependencies
+1. Setup a Modal account and install it on your machine if you have not already, following their easy 3-steps in their [Getting Started Guide](https://modal.com/docs/guide#getting-started)
 
-```bash
-python -m venv venv
-source venv/bin/active # or OS equivalent
-pip install -r requirements.txt
-```
 
 2. Setup .env
 
@@ -32,6 +27,6 @@ modal deploy app.py
 
 ## Configuration options
 
-This app sets some sensible defaults for reducing cold starts, such as `minkeep_warm=1`, which will keep at least 1 warm instance ready for your bot function.
+This app sets some sensible defaults for reducing cold starts, such as `min_containers=1`, which will keep at least 1 warm instance ready for your bot function.
 
 It has been configured to only allow a concurrency of 1 (`max_inputs=1`) as each user will require their own running function.
