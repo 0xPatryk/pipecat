@@ -16,15 +16,12 @@ The bot runs as part of a pipeline that processes audio/video frames and manages
 the conversation flow using Gemini's streaming capabilities.
 """
 
-import asyncio
 import os
 import sys
 
-import aiohttp
 from dotenv import load_dotenv
 from loguru import logger
 from PIL import Image
-from runner import configure
 
 from pipecat.audio.vad.silero import SileroVADAnalyzer
 from pipecat.audio.vad.vad_analyzer import VADParams
@@ -102,7 +99,7 @@ class TalkingAnimation(FrameProcessor):
         await self.push_frame(frame, direction)
 
 
-async def main():
+async def run_bot(room_url: str, token: str):
     """Main bot execution function.
 
     Sets up and runs the bot pipeline including:
@@ -112,93 +109,86 @@ async def main():
     - Animation processing
     - RTVI event handling
     """
-    async with aiohttp.ClientSession() as session:
-        (room_url, token) = await configure(session)
+    # Set up Daily transport with specific audio/video parameters for Gemini
+    transport = DailyTransport(
+        room_url,
+        token,
+        "Chatbot",
+        DailyParams(
+            audio_out_enabled=True,
+            camera_out_enabled=True,
+            camera_out_width=1024,
+            camera_out_height=576,
+            vad_enabled=True,
+            vad_audio_passthrough=True,
+            vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.5)),
+        ),
+    )
 
-        # Set up Daily transport with specific audio/video parameters for Gemini
-        transport = DailyTransport(
-            room_url,
-            token,
-            "Chatbot",
-            DailyParams(
-                audio_out_enabled=True,
-                camera_out_enabled=True,
-                camera_out_width=1024,
-                camera_out_height=576,
-                vad_enabled=True,
-                vad_audio_passthrough=True,
-                vad_analyzer=SileroVADAnalyzer(params=VADParams(stop_secs=0.5)),
-            ),
-        )
+    # Initialize the Gemini Multimodal Live model
+    llm = GeminiMultimodalLiveLLMService(
+        api_key=os.getenv("GEMINI_API_KEY"),
+        voice_id="Puck",  # Aoede, Charon, Fenrir, Kore, Puck
+        transcribe_user_audio=True,
+    )
 
-        # Initialize the Gemini Multimodal Live model
-        llm = GeminiMultimodalLiveLLMService(
-            api_key=os.getenv("GEMINI_API_KEY"),
-            voice_id="Puck",  # Aoede, Charon, Fenrir, Kore, Puck
-            transcribe_user_audio=True,
-        )
+    messages = [
+        {
+            "role": "user",
+            "content": "You are Chatbot, a friendly, helpful robot. Your goal is to demonstrate your capabilities in a succinct way. Your output will be converted to audio so don't include special characters in your answers. Respond to what the user said in a creative and helpful way, but keep your responses brief. Start by introducing yourself.",
+        },
+    ]
 
-        messages = [
-            {
-                "role": "user",
-                "content": "You are Chatbot, a friendly, helpful robot. Your goal is to demonstrate your capabilities in a succinct way. Your output will be converted to audio so don't include special characters in your answers. Respond to what the user said in a creative and helpful way, but keep your responses brief. Start by introducing yourself.",
-            },
+    # Set up conversation context and management
+    # The context_aggregator will automatically collect conversation context
+    context = OpenAILLMContext(messages)
+    context_aggregator = llm.create_context_aggregator(context)
+
+    ta = TalkingAnimation()
+
+    #
+    # RTVI events for Pipecat client UI
+    #
+    rtvi = RTVIProcessor(config=RTVIConfig(config=[]))
+
+    pipeline = Pipeline(
+        [
+            transport.input(),
+            rtvi,
+            context_aggregator.user(),
+            llm,
+            ta,
+            transport.output(),
+            context_aggregator.assistant(),
         ]
+    )
 
-        # Set up conversation context and management
-        # The context_aggregator will automatically collect conversation context
-        context = OpenAILLMContext(messages)
-        context_aggregator = llm.create_context_aggregator(context)
+    task = PipelineTask(
+        pipeline,
+        params=PipelineParams(
+            allow_interruptions=True,
+            enable_metrics=True,
+            enable_usage_metrics=True,
+        ),
+        observers=[RTVIObserver(rtvi)],
+    )
+    await task.queue_frame(quiet_frame)
 
-        ta = TalkingAnimation()
+    @rtvi.event_handler("on_client_ready")
+    async def on_client_ready(rtvi):
+        await rtvi.set_bot_ready()
+        # Kick off the conversation
+        await task.queue_frames([context_aggregator.user().get_context_frame()])
 
-        #
-        # RTVI events for Pipecat client UI
-        #
-        rtvi = RTVIProcessor(config=RTVIConfig(config=[]))
+    @transport.event_handler("on_first_participant_joined")
+    async def on_first_participant_joined(transport, participant):
+        await transport.capture_participant_transcription(participant["id"])
 
-        pipeline = Pipeline(
-            [
-                transport.input(),
-                rtvi,
-                context_aggregator.user(),
-                llm,
-                ta,
-                transport.output(),
-                context_aggregator.assistant(),
-            ]
-        )
+    @transport.event_handler("on_participant_left")
+    async def on_participant_left(transport, participant, reason):
+        print(f"Participant left: {participant}")
+        await task.cancel()
 
-        task = PipelineTask(
-            pipeline,
-            params=PipelineParams(
-                allow_interruptions=True,
-                enable_metrics=True,
-                enable_usage_metrics=True,
-            ),
-            observers=[RTVIObserver(rtvi)],
-        )
-        await task.queue_frame(quiet_frame)
+    runner = PipelineRunner()
 
-        @rtvi.event_handler("on_client_ready")
-        async def on_client_ready(rtvi):
-            await rtvi.set_bot_ready()
-            # Kick off the conversation
-            await task.queue_frames([context_aggregator.user().get_context_frame()])
-
-        @transport.event_handler("on_first_participant_joined")
-        async def on_first_participant_joined(transport, participant):
-            await transport.capture_participant_transcription(participant["id"])
-
-        @transport.event_handler("on_participant_left")
-        async def on_participant_left(transport, participant, reason):
-            print(f"Participant left: {participant}")
-            await task.cancel()
-
-        runner = PipelineRunner()
-
-        await runner.run(task)
-
-
-if __name__ == "__main__":
-    asyncio.run(main())
+    await runner.run(task)
