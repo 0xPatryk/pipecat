@@ -127,7 +127,7 @@ async def run_bot(room_url: str, token: str):
 
     # Initialize the Gemini Multimodal Live model
     llm = GeminiMultimodalLiveLLMService(
-        api_key=os.getenv("GEMINI_API_KEY"),
+        api_key=os.getenv("GOOGLE_API_KEY"),
         voice_id="Puck",  # Aoede, Charon, Fenrir, Kore, Puck
         transcribe_user_audio=True,
     )
