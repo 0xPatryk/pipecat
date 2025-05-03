@@ -14,11 +14,11 @@ def get_bot_file(arg_bot: str | None) -> str:
     bot_implementation = arg_bot or os.getenv("BOT_IMPLEMENTATION", "openai").lower().strip()
     if not bot_implementation:
         bot_implementation = "openai"
-    if bot_implementation not in ["openai", "gemini"]:
+    if bot_implementation not in ["openai", "gemini", "vllm"]:
         raise ValueError(
             f"Invalid BOT_IMPLEMENTATION: {bot_implementation}. Must be 'openai' or 'gemini'"
         )
-    return f"bot-{bot_implementation}"
+    return f"bot_{bot_implementation}"
 
 
 def get_runner(bot_file: str):

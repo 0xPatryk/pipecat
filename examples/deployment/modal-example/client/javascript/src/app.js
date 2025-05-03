@@ -68,7 +68,6 @@ class ChatbotClient {
       params: {
         // REPLACE WITH YOUR MODAL URL ENDPOINT
         // baseUrl: 'https://<Modal workspace>--pipecat-modal-bot-launcher.modal.run',
-        baseUrl: 'http://localhost:7860',
         endpoints: {
           connect: '/connect',
         },
@@ -96,8 +95,12 @@ class ChatbotClient {
         onTransportStateChanged: (state) => {
           this.updateStatus(`Transport: ${state}`);
           this.log(`Transport state changed: ${state}`);
+          if (state === 'connecting') {
+            window.startTime = Date.now();
+          }
           if (state === 'ready') {
             this.setupMediaTracks();
+            console.warn('TIME TO BOT READY:', Date.now() - window.startTime);
           }
         },
         // Handle bot connection events
@@ -259,18 +262,23 @@ class ChatbotClient {
    */
   async connect() {
     try {
+      const botSelector = document.getElementById('bot-selector');
+      const selectedBot = botSelector.value;
+      this.rtviClient.params.requestData.bot_name = selectedBot;
+
       // Initialize audio/video devices
       this.log('Initializing devices...');
       await this.rtviClient.initDevices();
 
       // Connect to the bot
-      this.log('Connecting to bot...');
+      this.log(`Connecting to bot: ${selectedBot}`);
       await this.rtviClient.connect();
 
       this.log('Connection complete');
     } catch (error) {
       // Handle any errors during connection
-      this.log(`Error connecting: ${error.message}`);
+      console.error('Connection error:', error);
+      this.log(`Error connecting: ${JSON.stringify(error.message)}`);
       this.log(`Error stack: ${error.stack}`);
       this.updateStatus('Error');
 

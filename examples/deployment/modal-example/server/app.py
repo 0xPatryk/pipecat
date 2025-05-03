@@ -29,6 +29,7 @@ web_image = (
     modal.Image.debian_slim(python_version="3.13")
     .pip_install_from_requirements("requirements.txt")
     .pip_install("pipecat-ai[daily]")
+    .add_local_dir("src", remote_path="/root/src")
 )
 
 bot_image = (
@@ -46,7 +47,7 @@ router = APIRouter()
 bot_jobs = {}
 daily_helpers = {}
 
-BotName = Literal["openai", "gemini"]
+BotName = Literal["openai", "gemini", "vllm"]
 
 
 def cleanup():
@@ -64,7 +65,7 @@ def get_bot_file(bot_name: BotName) -> str:
     """Retrieve the bot file name based on the provided bot name.
 
     Args:
-        bot_name (BotName): The name of the bot (e.g., 'openai', 'gemini').
+        bot_name (BotName): The name of the bot (e.g., 'openai', 'gemini', 'vllm').
 
     Returns:
         str: The file name corresponding to the bot implementation.
@@ -76,10 +77,11 @@ def get_bot_file(bot_name: BotName) -> str:
     bot_implementation = bot_name.lower().strip()
     if not bot_implementation:
         bot_implementation = "openai"
-    if bot_implementation not in ["openai", "gemini"]:
+    if bot_implementation not in ["openai", "gemini", "vllm"]:
         raise ValueError(
-            f"Invalid BOT_IMPLEMENTATION: {bot_implementation}. Must be 'openai' or 'gemini'"
+            f"Invalid BOT_IMPLEMENTATION: {bot_implementation}. Must be 'openai' or 'gemini' or 'vllm'"
         )
+
     return f"bot_{bot_implementation}"
 
 
@@ -88,7 +90,7 @@ def get_runner(path: str, bot_file: str) -> callable:
 
     Args:
         path (str): The path to the bot files (e.g., 'src').
-        bot_file (str): The file name of the bot implementation (e.g., 'openai', 'gemini').
+        bot_file (str): The file name of the bot implementation (e.g., 'openai', 'gemini', 'vllm').
 
     Returns:
         function: The run_bot function from the specified bot module.
@@ -239,6 +241,7 @@ async def rtvi_connect(data: ConnectData) -> Dict[Any, Any]:
     Returns:
         Dict[Any, Any]: A dictionary containing the room URL and token.
     """
+    print(f"Starting bot: {data.bot_name}")
     if data is None or not data.bot_name:
         data.bot_name = os.getenv("BOT_IMPLEMENTATION", "openai").lower().strip()
     room_url, token = await start(data)

@@ -31,6 +31,22 @@ modal serve app.py
 modal deploy app.py
 ```
 
+# Deploy a self-serve LLM
+
+1. Follow the Modal Guide and example for [Deploying an OpenAI-compatible LLM service with vLLM](https://modal.com/docs/examples/vllm_inference).
+
+    The TLDR; set up, though is simply to do the following in this directory:
+
+   ```
+   git clone https://github.com/modal-labs/modal-examples
+   cd modal-examples
+   modal deploy 06_gpu_and_ml/llm-serving/vllm_inference.py
+   ```
+
+2. Update `server/src/bot_vllm.py`
+   1. Update `modal_url` to point to the url produced from the deploy in the previous step.
+   2. Update `'super-secret-key'` if you have changed the API key for your llm endpoint.
+
 # Launch and Talk to your Bots running on Modal
 
 ## Option 1: Direct Link

@@ -43,8 +43,13 @@ from pipecat.services.openai.llm import OpenAILLMService
 from pipecat.transports.services.daily import DailyParams, DailyTransport
 
 load_dotenv(override=True)
-logger.remove(0)
-logger.add(sys.stderr, level="DEBUG")
+
+try:
+    logger.remove(0)
+    logger.add(sys.stderr, level="DEBUG")
+except ValueError:
+    # Handle the case where logger is already initialized
+    pass
 
 sprites = []
 script_dir = os.path.dirname(__file__)
