@@ -5,6 +5,7 @@
 #
 
 from typing import AsyncGenerator, Dict, Literal, Optional
+import struct
 
 from loguru import logger
 from openai import AsyncOpenAI, BadRequestError
@@ -124,11 +125,50 @@ class OpenAITTSService(TTSService):
                 await self.start_tts_usage_metrics(text)
 
                 CHUNK_SIZE = 1024
+                first_chunk = True
+                is_first_frame_sent = False
 
-                yield TTSStartedFrame()
                 async for chunk in r.iter_bytes(CHUNK_SIZE):
                     if len(chunk) > 0:
                         await self.stop_ttfb_metrics()
+                        
+                        # Process first chunk to prevent click sound
+                        if first_chunk:
+                            # Add silence at the beginning (fade in)
+                            try:
+                                # Convert bytes to samples (assuming 16-bit PCM)
+                                sample_size = 2  # 16-bit = 2 bytes per sample
+                                num_samples = len(chunk) // sample_size
+                                samples = list(struct.unpack(f"<{num_samples}h", chunk))
+                                
+                                # Trim the very beginning of the first chunk to remove potential WAV header artifacts
+                                trim_size = 20  # Trim first 20 samples 
+                                if num_samples > trim_size + 200:  # Ensure we have enough samples
+                                    samples = samples[trim_size:]
+                                    num_samples = len(samples)
+                                
+                                # Apply fade-in to first few samples to prevent click
+                                fade_length = min(200, num_samples)  # Increased from 100 to 200 samples
+                                for i in range(fade_length):
+                                    samples[i] = int(samples[i] * (i / fade_length))
+                                
+                                # Convert back to bytes
+                                chunk = struct.pack(f"<{len(samples)}h", *samples)
+                                
+                                # Send a small silent buffer first if first frame hasn't been sent
+                                if not is_first_frame_sent:
+                                    # Create 20ms of silence as a buffer (increased from 10ms)
+                                    silent_samples = int(self.sample_rate * 0.02)  # 20ms worth of samples
+                                    silent_chunk = struct.pack(f"<{silent_samples}h", *([0] * silent_samples))
+                                    silent_frame = TTSAudioRawFrame(silent_chunk, self.sample_rate, 1)
+                                    yield silent_frame
+                                    is_first_frame_sent = True
+                                
+                                logger.debug("Applied enhanced audio preprocessing to first chunk")
+                            except Exception as e:
+                                logger.warning(f"Error preprocessing first audio chunk: {e}")
+                            first_chunk = False
+                        
                         frame = TTSAudioRawFrame(chunk, self.sample_rate, 1)
                         yield frame
                 yield TTSStoppedFrame()
